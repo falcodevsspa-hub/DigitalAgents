@@ -54,7 +54,7 @@ const Contact = () => {
   };
 
   const handleWhatsApp = () => {
-    window.open("https://wa.me/XXXXXXXX", "_blank");
+    window.open("https://wa.me/56927444800?text=Hola%20FalcoDevs,%20quiero%20automatizar%20mi%20operación%20al%20100%.", "_blank");
   };
 
   return (
