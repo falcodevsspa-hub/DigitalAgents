@@ -6,7 +6,6 @@ import {
   Bot,
   Check,
   Database,
-  Mail,
   Puzzle,
   Send,
   Settings,
@@ -24,14 +23,10 @@ type SelectionState = {
 type ContactState = {
   nombre: string;
   empresa: string;
-  contactoEmail: boolean;
-  contactoWhatsapp: boolean;
   email: string;
   paisWhatsapp: string;
   whatsapp: string;
-  paisTelefono: string;
   telefono: string;
-  horarioLlamada: string;
   solicitarLlamada: boolean;
 };
 
@@ -90,18 +85,13 @@ const App = () => {
   const [contact, setContact] = useState<ContactState>({
     nombre: "",
     empresa: "",
-    contactoEmail: true,
-    contactoWhatsapp: false,
     email: "",
     paisWhatsapp: "+56",
     whatsapp: "",
-    paisTelefono: "+56",
     telefono: "",
-    horarioLlamada: "",
     solicitarLlamada: false,
   });
 
-  const phoneRule = COUNTRY_PHONE_RULES[contact.paisTelefono];
   const whatsappRule = COUNTRY_PHONE_RULES[contact.paisWhatsapp];
 
   const validationErrors = useMemo(() => {
@@ -119,18 +109,12 @@ const App = () => {
       errors.empresa = "Ingresa el nombre de tu empresa.";
     }
 
-    if (!contact.contactoEmail && !contact.contactoWhatsapp) {
-      errors.contacto = "Selecciona al menos un canal de contacto.";
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(contact.email.trim())) {
+      errors.email = "Ingresa un email valido.";
     }
 
-    if (contact.contactoEmail) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(contact.email.trim())) {
-        errors.email = "Ingresa un email valido.";
-      }
-    }
-
-    if (contact.contactoWhatsapp) {
+    if (whatsappDigits.length > 0) {
       const isChileWhatsAppValid =
         contact.paisWhatsapp !== "+56" || (whatsappDigits.length === 9 && whatsappDigits.startsWith("9"));
       const hasValidLength = whatsappDigits.length >= whatsappRule.min && whatsappDigits.length <= whatsappRule.max;
@@ -139,19 +123,12 @@ const App = () => {
       }
     }
 
-    if (
-      contact.solicitarLlamada &&
-      (!phoneRule || phoneDigits.length < phoneRule.min || phoneDigits.length > phoneRule.max)
-    ) {
-      errors.telefono = `El telefono debe tener ${phoneRule?.max ?? 0} digitos para ${contact.paisTelefono}.`;
-    }
-
-    if (contact.solicitarLlamada && !contact.horarioLlamada) {
-      errors.horarioLlamada = "Selecciona un horario preferido para la llamada.";
+    if (contact.solicitarLlamada && (phoneDigits.length < 8 || phoneDigits.length > 15)) {
+      errors.telefono = "Ingresa un telefono valido (8 a 15 digitos).";
     }
 
     return errors;
-  }, [contact, phoneRule, whatsappRule]);
+  }, [contact, whatsappRule]);
 
   const canContinue = useMemo(() => {
     if (step === 1) return Boolean(selection.area);
@@ -167,24 +144,13 @@ const App = () => {
     return true;
   }, [contact.empresa, contact.nombre, contact.solicitarLlamada, contact.telefono, selection.area, selection.tiempo, sending, step, validationErrors]);
 
-  const onWhatsappSwitchChange = () => {
-    setContact((prev) => ({
-      ...prev,
-      contactoWhatsapp: !prev.contactoWhatsapp,
-      whatsapp: prev.contactoWhatsapp ? "" : prev.whatsapp,
-    }));
-    setStatus(null);
-  };
-
   const onCallSwitchChange = () => {
     setContact((prev) => {
       if (prev.solicitarLlamada) {
         return {
           ...prev,
           solicitarLlamada: false,
-          paisTelefono: "+56",
           telefono: "",
-          horarioLlamada: "",
         };
       }
       return { ...prev, solicitarLlamada: true };
@@ -225,10 +191,10 @@ const App = () => {
     setStatus(null);
 
     const toolsText = selection.tools.length ? selection.tools.join(", ") : "No especificado";
-    const canales = [contact.contactoEmail ? "Email" : "", contact.contactoWhatsapp ? "WhatsApp" : ""]
+    const canales = ["Email", contact.whatsapp ? "WhatsApp" : ""]
       .filter(Boolean)
       .join(", ");
-    const telefonoCompleto = `${contact.paisTelefono} ${onlyDigits(contact.telefono)}`;
+    const telefonoCompleto = onlyDigits(contact.telefono) || "No especificado";
     const whatsappCompleto = contact.whatsapp ? `${contact.paisWhatsapp} ${onlyDigits(contact.whatsapp)}` : "No especificado";
     const fullMessage = [
       "Nueva solicitud ProAgents",
@@ -246,7 +212,7 @@ const App = () => {
       `WhatsApp: ${whatsappCompleto}`,
       `Telefono: ${telefonoCompleto}`,
       `Solicita llamada: ${contact.solicitarLlamada ? "Si" : "No"}`,
-      `Horario preferido llamada: ${contact.solicitarLlamada ? contact.horarioLlamada : "No aplica"}`,
+      `Tipo de llamada: ${contact.solicitarLlamada ? "Instantanea" : "No aplica"}`,
     ].join("\n");
 
     if (Object.keys(validationErrors).length > 0) {
@@ -275,13 +241,12 @@ const App = () => {
           reply_to: contact.email,
           whatsapp: whatsappCompleto,
           whatsapp_country_code: contact.paisWhatsapp,
-          phone_country_code: contact.paisTelefono,
           phone: telefonoCompleto,
           telefono: telefonoCompleto,
           request_call: contact.solicitarLlamada ? "Si" : "No",
           solicitar_llamada: contact.solicitarLlamada ? "Si" : "No",
-          call_schedule: contact.solicitarLlamada ? contact.horarioLlamada : "No aplica",
-          horario_llamada: contact.solicitarLlamada ? contact.horarioLlamada : "No aplica",
+          call_schedule: contact.solicitarLlamada ? "Instantanea" : "No aplica",
+          horario_llamada: contact.solicitarLlamada ? "Instantanea" : "No aplica",
           area: selection.area,
           automation_area: selection.area,
           time_lost: selection.tiempo,
@@ -347,15 +312,21 @@ const App = () => {
               <h1 className="step-title">¿Que quieres automatizar?</h1>
               <p className="step-sub">Selecciona el area principal de tu negocio</p>
               <div className="options-grid two-cols">
-                {[
+                {([
                   ["Atencion al cliente", "Respuestas automaticas 24/7", <Bot size={16} />],
                   ["Ventas y seguimiento", "Pipeline y leads automatico", <TrendingUp size={16} />],
                   ["Procesos internos", "Flujos y tareas repetitivas", <Settings size={16} />],
                   ["Otro proceso", "Cuentanos tu caso especifico", <Puzzle size={16} />],
-                ].map(([title, desc, icon]) => {
+                ] as [string, string, JSX.Element][]).map(([title, desc, icon]) => {
                   const selected = selection.area === title;
                   return (
-                    <button key={title} className={`opt-card ${selected ? "selected" : ""}`} onClick={() => selectArea(title)}>
+                    <button
+                      key={title}
+                      type="button"
+                      aria-pressed={selected}
+                      className={`opt-card ${selected ? "selected" : ""}`}
+                      onClick={() => selectArea(title)}
+                    >
                       <span className={`opt-icon ${selected ? "sel" : ""}`}>{icon}</span>
                       <span className="opt-text">
                         <span className="opt-title">{title}</span>
@@ -376,12 +347,12 @@ const App = () => {
               <p className="step-sub">Asi dimensionamos el agente correcto para ti</p>
 
               <div className="options-grid three-cols compact-cards">
-                {["1-2 hrs/dia", "3-5 hrs/dia", "+5 hrs/dia"].map((slot) => {
+                {["1-2 horas/dia", "3-5 horas/dia", "+5 horas/dia"].map((slot) => {
                   const selected = selection.tiempo === slot;
                   return (
                     <button key={slot} className={`opt-card vertical ${selected ? "selected" : ""}`} onClick={() => selectTiempo(slot)}>
                       <span className="hours">{slot.split(" ")[0]}</span>
-                      <span className="opt-desc">al dia</span>
+                      <span className="opt-desc">Horas al dia</span>
                     </button>
                   );
                 })}
@@ -391,9 +362,7 @@ const App = () => {
                 <div className="step-label inline">¿Que herramientas usas?</div>
                 <div className="chips-wrap">
                   {[
-                    ["WhatsApp", <Bot size={14} />],
                     ["CRM/ERP", <Database size={14} />],
-                    ["Email", <Mail size={14} />],
                     ["Google Sheets", <Table size={14} />],
                     ["Instagram", <TrendingUp size={14} />],
                   ].map(([tool, icon]) => {
@@ -438,66 +407,75 @@ const App = () => {
                   {validationErrors.empresa && <p className="field-error">{validationErrors.empresa}</p>}
                 </div>
               </div>
-              <div className="channel-switches">
-                <button type="button" className={`switch-card ${contact.contactoEmail ? "on" : ""}`} onClick={() => setContact((p) => ({ ...p, contactoEmail: !p.contactoEmail }))}>
-                  <span>Email</span>
-                  <span className={`switch-dot ${contact.contactoEmail ? "on" : ""}`} />
-                </button>
-                <button type="button" className={`switch-card ${contact.contactoWhatsapp ? "on" : ""}`} onClick={onWhatsappSwitchChange}>
-                  <span>WhatsApp</span>
-                  <span className={`switch-dot ${contact.contactoWhatsapp ? "on" : ""}`} />
-                </button>
-              </div>
-              {validationErrors.contacto && <p className="field-error">{validationErrors.contacto}</p>}
               <div className="form-row">
-                {contact.contactoEmail && (
-                  <div className="field">
-                    <label htmlFor="email">Email</label>
-                    <input id="email" type="email" placeholder="tu@email.com" maxLength={120} value={contact.email} onChange={(e) => setContact((p) => ({ ...p, email: e.target.value }))} />
-                    {validationErrors.email && <p className="field-error">{validationErrors.email}</p>}
-                  </div>
-                )}
-                {contact.contactoWhatsapp && (
-                  <div className="field">
-                    <label htmlFor="paisWhatsapp">Codigo pais WhatsApp</label>
-                    <select
-                      id="paisWhatsapp"
-                      value={contact.paisWhatsapp}
-                      onChange={(e) =>
-                        setContact((p) => ({
-                          ...p,
-                          paisWhatsapp: e.target.value,
-                          whatsapp: onlyDigits(p.whatsapp).slice(0, COUNTRY_PHONE_RULES[e.target.value].max),
-                        }))
-                      }
-                    >
-                      {Object.entries(COUNTRY_PHONE_RULES).map(([code, data]) => (
-                        <option key={code} value={code}>
-                          {data.label}
-                        </option>
-                      ))}
-                    </select>
-                    <label htmlFor="whatsapp">WhatsApp</label>
-                    <div className="phone-input-wrap">
-                      <span className="phone-prefix">{whatsappRule.prefix}</span>
-                      <input
-                        id="whatsapp"
-                        placeholder={whatsappRule.example}
-                        inputMode="numeric"
-                        disabled={!contact.contactoWhatsapp}
-                        maxLength={whatsappRule.max + 4}
-                        value={formatByCountry(contact.paisWhatsapp, contact.whatsapp)}
-                        onChange={(e) =>
-                          setContact((p) => ({
-                            ...p,
-                            whatsapp: onlyDigits(e.target.value).slice(0, COUNTRY_PHONE_RULES[p.paisWhatsapp].max),
-                          }))
-                        }
-                      />
-                    </div>
-                    {validationErrors.whatsapp && <p className="field-error">{validationErrors.whatsapp}</p>}
-                  </div>
-                )}
+                <div className="field">
+                  <label htmlFor="email">Email</label>
+                  <input
+                    id="email"
+                    type="email"
+                    placeholder="tu@email.com"
+                    maxLength={120}
+                    value={contact.email}
+                    onChange={(e) => setContact((p) => ({ ...p, email: e.target.value }))}
+                  />
+                  {validationErrors.email && <p className="field-error">{validationErrors.email}</p>}
+                </div>
+
+                <div className="field">
+  <label htmlFor="whatsapp">WhatsApp opcional</label>
+
+  <div className="whatsapp-input-group">
+    <select
+      id="paisWhatsapp"
+      value={contact.paisWhatsapp}
+      onChange={(e) =>
+        setContact((p) => ({
+          ...p,
+          paisWhatsapp: e.target.value,
+          whatsapp: onlyDigits(p.whatsapp).slice(
+            0,
+            COUNTRY_PHONE_RULES[e.target.value].max,
+          ),
+        }))
+      }
+      className="whatsapp-country-select"
+      aria-label="Código país WhatsApp"
+    >
+      {Object.entries(COUNTRY_PHONE_RULES).map(([code, data]) => (
+        <option key={code} value={code}>
+          {code === "+56" && "🇨🇱 "}
+          {code === "+54" && "🇦🇷 "}
+          {code === "+51" && "🇵🇪 "}
+          {code === "+52" && "🇲🇽 "}
+          {code === "+57" && "🇨🇴 "}
+          {data.prefix}
+        </option>
+      ))}
+    </select>
+
+    <input
+      id="whatsapp"
+      placeholder={whatsappRule.example}
+      inputMode="numeric"
+      maxLength={whatsappRule.max + 4}
+      value={formatByCountry(contact.paisWhatsapp, contact.whatsapp)}
+      onChange={(e) =>
+        setContact((p) => ({
+          ...p,
+          whatsapp: onlyDigits(e.target.value).slice(
+            0,
+            COUNTRY_PHONE_RULES[p.paisWhatsapp].max,
+          ),
+        }))
+      }
+      className="whatsapp-number-input"
+    />
+  </div>
+
+  {validationErrors.whatsapp && (
+    <p className="field-error">{validationErrors.whatsapp}</p>
+  )}
+</div>
               </div>
               <button
                 type="button"
@@ -507,69 +485,29 @@ const App = () => {
                 <span className={`opt-check ${contact.solicitarLlamada ? "checked" : ""}`} />
                 <span className="opt-text">
                   <span className="opt-title">Solicitar una llamada</span>
-                  <span className="opt-desc">Coordinamos una llamada para revisar tu caso y acelerar la propuesta.</span>
+                  <span className="opt-desc">Te llamamos apenas envies los datos para revisar tu caso al instante.</span>
                 </span>
               </button>
               {contact.solicitarLlamada && (
                 <>
                   <div className="form-row">
-                    <div className="field code-field">
-                      <label htmlFor="paisTelefono">Codigo pais</label>
-                      <select
-                        id="paisTelefono"
-                        value={contact.paisTelefono}
+                    <div className="field">
+                      <label htmlFor="telefono">Telefono</label>
+                      <input
+                        id="telefono"
+                        placeholder="Ej: 912345678"
+                        inputMode="numeric"
+                        maxLength={15}
+                        value={onlyDigits(contact.telefono)}
                         onChange={(e) =>
                           setContact((p) => ({
                             ...p,
-                            paisTelefono: e.target.value,
-                            telefono: onlyDigits(p.telefono).slice(0, COUNTRY_PHONE_RULES[e.target.value].max),
+                            telefono: onlyDigits(e.target.value).slice(0, 15),
                           }))
                         }
-                      >
-                        {Object.entries(COUNTRY_PHONE_RULES).map(([code, data]) => (
-                          <option key={code} value={code}>
-                            {data.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="field">
-                      <label htmlFor="telefono">Telefono</label>
-                      <div className="phone-input-wrap">
-                        <span className="phone-prefix">{phoneRule.prefix}</span>
-                        <input
-                          id="telefono"
-                          placeholder={phoneRule.example}
-                          inputMode="numeric"
-                          maxLength={phoneRule.max + 4}
-                          value={formatByCountry(contact.paisTelefono, contact.telefono)}
-                          onChange={(e) =>
-                            setContact((p) => ({
-                              ...p,
-                              telefono: onlyDigits(e.target.value).slice(0, COUNTRY_PHONE_RULES[p.paisTelefono].max),
-                            }))
-                          }
-                        />
-                      </div>
+                      />
                       {validationErrors.telefono && <p className="field-error">{validationErrors.telefono}</p>}
                     </div>
-                  </div>
-                  <div className="form-row">
-                    <div className="field">
-                    <label htmlFor="horarioLlamada">Horario preferido de llamada</label>
-                    <select
-                      id="horarioLlamada"
-                      value={contact.horarioLlamada}
-                      onChange={(e) => setContact((p) => ({ ...p, horarioLlamada: e.target.value }))}
-                    >
-                      <option value="">Selecciona un horario</option>
-                      <option value="09:00-11:00">09:00 - 11:00</option>
-                      <option value="11:00-13:00">11:00 - 13:00</option>
-                      <option value="15:00-17:00">15:00 - 17:00</option>
-                      <option value="17:00-19:00">17:00 - 19:00</option>
-                    </select>
-                    {validationErrors.horarioLlamada && <p className="field-error">{validationErrors.horarioLlamada}</p>}
-                  </div>
                   </div>
                 </>
               )}
@@ -582,7 +520,7 @@ const App = () => {
             <div className="screen active centered">
               <div className="success-icon"><Check size={24} /></div>
               <h2 className="success-title">Propuesta en camino</h2>
-              <p className="success-sub">Revisamos tu caso y te respondemos en menos de 24 horas con un plan concreto.</p>
+              <p className="success-sub">Revisamos tu caso y te respondemos con un plan concreto. Si pediste llamada, te contactamos de inmediato.</p>
             </div>
           )}
         </div>
